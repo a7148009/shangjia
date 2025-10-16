@@ -1079,18 +1079,29 @@ class MerchantCollector:
                                 if self.debug_mode:
                                     print(f"     ✓ 商家名: {clean_text} (resource-id={resource_id})")
 
-                # 尝试匹配电话按钮
-                if any(keyword in resource_id.lower() for keyword in ['phone', 'tel', 'call']) or \
+                # 尝试匹配电话按钮（🆕 增强：排除非拨号按钮）
+                if any(keyword in resource-id.lower() for keyword in ['phone', 'tel', 'call']) or \
                    '电话' in clean_text or '电话' in content_desc:
                     if not detail_info['phone_button_pos']:
-                        bounds = self._parse_bounds(bounds_str)
-                        if bounds:
-                            detail_info['phone_button_pos'] = {
-                                'x': (bounds['x1'] + bounds['x2']) // 2,
-                                'y': (bounds['y1'] + bounds['y2']) // 2
-                            }
-                            if self.debug_mode:
-                                print(f"     ✓ 电话按钮: ({detail_info['phone_button_pos']['x']}, {detail_info['phone_button_pos']['y']}) (resource-id={resource_id})")
+                        # 🆕 关键过滤：排除非拨号按钮的文字
+                        excluded_texts = ['补充电话', '添加电话', '暂无电话', '未提供电话', '电话预定']
+                        is_excluded = any(ex in clean_text or ex in content_desc for ex in excluded_texts)
+
+                        if not is_excluded:
+                            # 🆕 验证必须是可点击的节点
+                            clickable = node.get('clickable', 'false')
+                            if clickable == 'true':
+                                bounds = self._parse_bounds(bounds_str)
+                                if bounds:
+                                    # 🆕 验证Y轴位置（必须在合理范围：200-1500）
+                                    y_pos = bounds['y1']
+                                    if 200 <= y_pos <= 1500:
+                                        detail_info['phone_button_pos'] = {
+                                            'x': (bounds['x1'] + bounds['x2']) // 2,
+                                            'y': (bounds['y1'] + bounds['y2']) // 2
+                                        }
+                                        if self.debug_mode:
+                                            print(f"     ✓ 电话按钮: ({detail_info['phone_button_pos']['x']}, {detail_info['phone_button_pos']['y']}) (resource-id={resource_id})")
 
                 # 尝试匹配地址
                 if any(keyword in resource_id.lower() for keyword in ['address', 'location', 'addr']):
@@ -1100,20 +1111,44 @@ class MerchantCollector:
                             if self.debug_mode:
                                 print(f"     ✓ 地址: {clean_text} (resource-id={resource_id})")
 
-            # 如果resource-id没找到电话按钮，尝试用文本搜索
+            # 如果resource-id没找到电话按钮，尝试用文本搜索（增强版：只识别真正的拨号按钮）
             if not detail_info['phone_button_pos']:
-                phone_nodes = root.xpath('//node[contains(@text, "电话") or contains(@content-desc, "电话")]')
-                if phone_nodes:
-                    phone_node = phone_nodes[0]
+                # 🆕 关键修复：只查找可点击且包含"电话"的节点
+                phone_nodes = root.xpath('//node[@clickable="true" and (contains(@text, "电话") or contains(@content-desc, "电话")) and @bounds]')
+
+                for phone_node in phone_nodes:
+                    text = phone_node.get('text', '').strip()
+                    content_desc = phone_node.get('content-desc', '').strip()
                     bounds_str = phone_node.get('bounds', '')
+
+                    # 🆕 排除非拨号按钮的文字
+                    # "补充电话"、"添加电话"、"电话预定"等都不是直接拨号按钮
+                    excluded_texts = ['补充电话', '添加电话', '暂无电话', '未提供电话', '电话预定']
+                    is_excluded = any(ex in text or ex in content_desc for ex in excluded_texts)
+
+                    if is_excluded:
+                        if self.debug_mode:
+                            print(f"     ⚠ 跳过非拨号按钮: '{text or content_desc}'")
+                        continue
+
+                    # 🆕 验证Y轴位置（必须在合理范围：200-1500）
+                    # 顶部导航栏（Y<200）和底部按钮（Y>1500）不是我们要的
                     bounds = self._parse_bounds(bounds_str)
                     if bounds:
+                        y_pos = bounds['y1']
+                        if not (200 <= y_pos <= 1500):
+                            if self.debug_mode:
+                                print(f"     ⚠ 跳过Y轴不合理的按钮: Y={y_pos}")
+                            continue
+
+                        # ✅ 找到符合条件的电话按钮
                         detail_info['phone_button_pos'] = {
                             'x': (bounds['x1'] + bounds['x2']) // 2,
                             'y': (bounds['y1'] + bounds['y2']) // 2
                         }
                         if self.debug_mode:
-                            print(f"     ✓ 电话按钮（文本搜索）: ({detail_info['phone_button_pos']['x']}, {detail_info['phone_button_pos']['y']})")
+                            print(f"     ✓ 电话按钮（文本搜索）: ({detail_info['phone_button_pos']['x']}, {detail_info['phone_button_pos']['y']}) 文本='{text or content_desc}'")
+                        break  # 找到第一个符合条件的就停止
 
             # 如果resource-id没找到地址，尝试用关键词搜索
             if not detail_info['address']:
