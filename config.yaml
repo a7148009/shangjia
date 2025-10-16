@@ -1,0 +1,179 @@
+# 商家采集系统 - 配置文件
+# Merchant Collection System - Configuration File
+
+# ============================================================================
+# 商家卡片定位参数 (Merchant Card Locator Parameters)
+# ============================================================================
+locator_params:
+  # Y轴安全范围 (Y-axis safe range)
+  # 说明：商家卡片在屏幕上的Y轴位置范围
+  # 根据日志分析：真实商家从Y=612开始，顶部广告在Y=255-561
+  safe_y_min: 600              # 最小Y轴位置（像素），过滤顶部广告（包括"鲜花配送推荐"等）
+  safe_y_max: 1800             # 最大Y轴位置（像素），过滤底部元素
+
+  # 宽度比例范围 (Width ratio range)
+  # 说明：商家卡片宽度占屏幕宽度的比例
+  # 支持多种布局：昆明搜索94%宽度，成都搜索66%宽度
+  min_width_ratio: 0.60        # 最小宽度比例（0-1），支持66%和94%两种布局
+  max_width_ratio: 0.98        # 最大宽度比例（0-1）
+
+  # 高度范围 (Height range)
+  # 说明：商家卡片的高度（像素）
+  # 支持纯文本卡片（150-200px）和带图片卡片（300-450px）
+  min_height: 100              # 最小高度（像素）
+  max_height: 450              # 最大高度（像素），支持带图片的商家卡片
+
+  # 安全点击区域比例 (Safe click zone ratios)
+  # 说明：在卡片内计算安全点击位置，避开按钮区域
+  # 商家卡片布局：
+  # ┌────────────────────────────────────────────────┐
+  # │ [商家名称]              [收藏] [电话] [导航]  │
+  # │ 地址: xxx                    距离: 5km       │
+  # └────────────────────────────────────────────────┘
+  #   ↑ 安全区域（10%-60%）       ↑ 按钮区域（60%-100%）
+  click_zone_left_ratio: 0.1   # 左边界比例（避开左边缘）
+  click_zone_right_ratio: 0.6  # 右边界比例（避开右侧按钮）
+  click_zone_top_ratio: 0.3    # 顶部比例（避开顶部文字）
+  click_zone_bottom_ratio: 0.7 # 底部比例（避开底部文字）
+
+
+# ============================================================================
+# 调试模式设置 (Debug Mode Settings)
+# ============================================================================
+debug_mode:
+  # 是否启用调试模式 (Enable debug mode)
+  enabled: true
+
+  # 截图保存目录 (Screenshot save directory)
+  screenshot_dir: "./debug_screenshots"
+
+  # 是否保存每个卡片的截图 (Save screenshot for each card)
+  save_card_screenshots: true
+
+  # 是否打印详细日志 (Print detailed logs)
+  print_detailed_logs: true
+
+  # 是否在点击前暂停确认 (Pause before click for confirmation)
+  pause_before_click: false
+
+  # 暂停等待时间（秒） (Pause duration in seconds)
+  pause_duration: 2
+
+
+# ============================================================================
+# 采集行为设置 (Collection Behavior Settings)
+# ============================================================================
+collection:
+  # 每次采集后的等待时间（秒） (Wait time after each collection)
+  wait_after_collection: 2.0
+
+  # 点击后等待时间（秒） (Wait time after click)
+  wait_after_click: 2.0
+
+  # 返回后等待时间（秒） (Wait time after going back)
+  wait_after_back: 1.5
+
+  # 最大重试次数 (Max retry attempts)
+  max_retry_attempts: 3
+
+  # 连续失败停止阈值 (Stop threshold for consecutive failures)
+  consecutive_failure_threshold: 5
+
+
+# ============================================================================
+# 广告过滤关键词 (Advertisement Filter Keywords)
+# ============================================================================
+# 说明：识别为包含以下关键词的文本将被过滤
+ad_keywords:
+  - "高德红包"
+  - "优惠"
+  - "券"
+  - "领取"
+  - "满减"
+  - "折扣"
+  - "减"
+  - "刚刚浏览"
+  - "大家还在搜"
+  - "推荐"
+  - "榜单"
+  - "扫街榜"
+  - "爆款"
+  - "精选"
+  - "新客"
+  - "满"
+  - "已领取"
+  - "鲜花配送"
+  - "上门配送"
+  - "配送服务"
+  - "送货上门"
+  - "配送推荐"
+  - "服务推荐"
+  - "推荐商家"
+  - "买花榜"
+
+
+# ============================================================================
+# 排除关键词 (Excluded Keywords)
+# ============================================================================
+# 说明：识别为包含以下关键词的文本将被排除，不作为商家名称
+excluded_keywords:
+  - "搜索"
+  - "导航"
+  - "路线"
+  - "附近"
+  - "更多"
+  - "分享"
+  - "收藏"
+  - "大家还在搜"
+  - "根据当前位置推荐"
+  - "附近更多"
+  - "查看"
+  - "去过"
+  - "想去"
+  - "人均"
+  - "公里"
+  - "km"
+  - "m"
+
+
+# ============================================================================
+# 数据库设置 (Database Settings)
+# ============================================================================
+database:
+  # 数据库文件路径 (Database file path)
+  db_path: "./merchants.db"
+
+  # 是否自动备份 (Auto backup)
+  auto_backup: true
+
+  # 备份间隔（小时） (Backup interval in hours)
+  backup_interval_hours: 24
+
+
+# ============================================================================
+# ADB设置 (ADB Settings)
+# ============================================================================
+adb:
+  # ADB连接超时时间（秒） (ADB connection timeout in seconds)
+  connection_timeout: 10
+
+  # 命令执行超时时间（秒） (Command execution timeout in seconds)
+  command_timeout: 30
+
+  # UI层级获取重试次数 (UI hierarchy fetch retry attempts)
+  ui_hierarchy_retry: 3
+
+
+# ============================================================================
+# 校准模式 (Calibration Mode)
+# ============================================================================
+# 说明：用于动态调整参数以适应不同的设备和屏幕
+calibration:
+  # 是否启用自动校准 (Enable auto calibration)
+  enabled: false
+
+  # 校准样本数量 (Calibration sample size)
+  sample_size: 10
+
+  # 校准成功率阈值 (Calibration success rate threshold)
+  success_rate_threshold: 0.8

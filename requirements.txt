@@ -1,0 +1,5 @@
+PyQt6
+uiautomator2
+adbutils
+requests
+Pillow

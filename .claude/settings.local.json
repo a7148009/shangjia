@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(.\\venv\\Scripts\\pip install:*)",
+      "Bash(venv\\Scripts\\pip.exe install:*)",
+      "Bash(dir:*)",
+      "Read(//d/**)",
+      "Bash(pip install pyyaml)",
+      "Bash(cd:*)",
+      "Bash(findstr /r \".*\")",
+      "Bash(findstr /v /r \"^$\")",
+      "Bash(powershell -Command \"$input | Select-Object -Last 1\")",
+      "Bash(git init:*)",
+      "Bash(git remote add:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
