@@ -651,13 +651,25 @@ class MerchantCollector:
 
     def _is_on_merchant_detail_page(self) -> bool:
         """
-        检测是否在商家详情页
+        检测是否在商家详情页（2025-01-16增强：新增右上角3按钮检测）
 
         商家详情页特征：
+        - 【新增】右上角同时包含：搜索按钮 + 反馈按钮 + 更多/关闭按钮
         - 包含"电话"按钮（必须）- 这是有效商家的核心标识
         - 包含"导航"或"路线"按钮
         - 不包含"筛选"、"排序"等列表页标识
         - 排除广告页面（"推荐"、"服务"等）
+
+        页面布局特征：
+        ┌─────────────────────────────────┐
+        │ [<] 花满庭鲜花  [🔍] [❗] [✕]   │ ← 右上角3个按钮（关键！）
+        │                                 │
+        │ 📸 [商家照片区域]                │
+        │                                 │
+        │ 花满庭鲜花（花开相爱旗舰店）    │ ← 商家名称
+        │ 四川省成都市金牛区...           │ ← 地址
+        │ [电话] [导航] [收藏]            │ ← 操作按钮
+        └─────────────────────────────────┘
 
         Returns:
             是否在商家详情页
@@ -669,8 +681,53 @@ class MerchantCollector:
 
             root = etree.fromstring(xml_content.encode('utf-8'))
 
-            # 核心特征：必须有电话按钮（有电话的才是有效商家）
+            # 🆕 关键特征1：右上角3个按钮（搜索、反馈、关闭）
+            # 这是商家详情页最显著的特征，位于屏幕顶部右侧
+            top_right_nodes = root.xpath('//node[@clickable="true" and @bounds]')
+            has_search_btn = False
+            has_feedback_btn = False
+            has_close_btn = False
+
+            for node in top_right_nodes:
+                bounds_str = node.get('bounds', '')
+                content_desc = node.get('content-desc', '').strip()
+                text = node.get('text', '').strip()
+
+                # 解析坐标
+                match = re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', bounds_str)
+                if match:
+                    x1, y1, x2, y2 = map(int, match.groups())
+
+                    # 右上角区域：X > 屏幕宽度的70%, Y < 200
+                    screen_width, _ = self.adb_manager.get_screen_size()
+                    if x1 > screen_width * 0.7 and y1 < 200:
+                        # 检测搜索按钮（放大镜图标）
+                        if '搜索' in content_desc or '搜索' in text or 'search' in content_desc.lower():
+                            has_search_btn = True
+                            if self.debug_mode:
+                                print(f"  ✓ 检测到搜索按钮 (X={x1}, Y={y1})")
+
+                        # 检测反馈按钮（感叹号图标）
+                        if '反馈' in content_desc or '反馈' in text or '举报' in content_desc or 'feedback' in content_desc.lower():
+                            has_feedback_btn = True
+                            if self.debug_mode:
+                                print(f"  ✓ 检测到反馈按钮 (X={x1}, Y={y1})")
+
+                        # 检测关闭/更多按钮
+                        if '关闭' in content_desc or '关闭' in text or '更多' in content_desc or '更多' in text or 'close' in content_desc.lower() or 'more' in content_desc.lower():
+                            has_close_btn = True
+                            if self.debug_mode:
+                                print(f"  ✓ 检测到关闭/更多按钮 (X={x1}, Y={y1})")
+
+            # 右上角3按钮特征（至少2个，因为可能有些按钮识别不到）
+            has_top_right_buttons = (has_search_btn and has_feedback_btn) or \
+                                   (has_search_btn and has_close_btn) or \
+                                   (has_feedback_btn and has_close_btn)
+
+            # 原有特征2：必须有电话按钮（有电话的才是有效商家）
             has_phone = len(root.xpath('//node[contains(@text, "电话") or contains(@content-desc, "电话")]')) > 0
+
+            # 原有特征3：导航按钮
             has_nav = len(root.xpath('//node[contains(@text, "导航") or contains(@content-desc, "导航") or contains(@text, "路线") or contains(@content-desc, "路线")]')) > 0
 
             # 排除搜索结果页特征
@@ -685,12 +742,21 @@ class MerchantCollector:
                     is_ad_page = True
                     break
 
-            is_detail_page = has_phone and has_nav and not has_filter and not has_sort and not is_ad_page
+            # 综合判断（优先级：右上角3按钮 > 电话+导航）
+            # 方案1：有右上角3按钮 + 电话按钮（最可靠）
+            is_detail_page_v1 = has_top_right_buttons and has_phone
+            # 方案2：电话 + 导航（兼容旧版）
+            is_detail_page_v2 = has_phone and has_nav and not has_filter and not has_sort
+
+            is_detail_page = (is_detail_page_v1 or is_detail_page_v2) and not is_ad_page
 
             if is_detail_page:
-                print("✓ 确认在商家详情页（有电话）")
+                if has_top_right_buttons:
+                    print("✓ 确认在商家详情页（检测到右上角3按钮）")
+                else:
+                    print("✓ 确认在商家详情页（检测到电话+导航）")
             else:
-                print(f"⚠ 不在商家详情页 (电话:{has_phone}, 导航:{has_nav}, 筛选:{has_filter}, 排序:{has_sort}, 广告:{is_ad_page})")
+                print(f"⚠ 不在商家详情页 (右上角按钮:{has_top_right_buttons}, 电话:{has_phone}, 导航:{has_nav}, 筛选:{has_filter}, 排序:{has_sort}, 广告:{is_ad_page})")
 
             return is_detail_page
 
@@ -700,12 +766,23 @@ class MerchantCollector:
 
     def _is_on_search_result_page(self) -> bool:
         """
-        检测是否在搜索结果页
+        检测是否在搜索结果页（2025-01-16增强：新增顶部标题检测）
 
         搜索结果页特征：
+        - 【新增】顶部包含"附近上榜"或类似标题文本
         - 包含"筛选"按钮
         - 包含"排序"按钮
         - 包含多个商家卡片（RecyclerView）
+
+        页面布局特征：
+        ┌─────────────────────────────────┐
+        │ [<] 成都全午区鲜花店  [🔍] [✕]  │ ← 顶部标题栏
+        │ 🔥 附近上榜  九里堤附近  ...    │ ← 关键标识！
+        │ [筛选] [排序]                   │ ← 关键按钮
+        ├─────────────────────────────────┤
+        │ [商家卡片1]                     │
+        │ [商家卡片2]                     │
+        └─────────────────────────────────┘
 
         Returns:
             是否在搜索结果页
@@ -717,17 +794,57 @@ class MerchantCollector:
 
             root = etree.fromstring(xml_content.encode('utf-8'))
 
-            # 检查关键特征
+            # 🆕 关键特征1：顶部标题区域（Y < 300）包含"附近上榜"等关键词
+            # 这是搜索结果页最显著的特征
+            top_area_nodes = root.xpath('//node[@text and @bounds]')
+            has_top_title = False
+            top_title_keywords = ['附近上榜', '榜单', '推荐商家', '附近商家', '搜索结果']
+
+            for node in top_area_nodes:
+                bounds_str = node.get('bounds', '')
+                text = node.get('text', '').strip()
+
+                # 解析Y轴坐标
+                match = re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', bounds_str)
+                if match:
+                    x1, y1, x2, y2 = map(int, match.groups())
+
+                    # 顶部区域：Y < 300
+                    if y1 < 300:
+                        # 检查是否包含关键词
+                        for keyword in top_title_keywords:
+                            if keyword in text:
+                                has_top_title = True
+                                if self.debug_mode:
+                                    print(f"  ✓ 检测到顶部标题特征: '{text}' (Y={y1})")
+                                break
+                        if has_top_title:
+                            break
+
+            # 原有特征2：筛选按钮
             has_filter = len(root.xpath('//node[contains(@text, "筛选")]')) > 0
+
+            # 原有特征3：排序按钮
             has_sort = len(root.xpath('//node[contains(@text, "排序")]')) > 0
+
+            # 原有特征4：RecyclerView
             has_recyclerview = len(root.xpath('//node[@class="androidx.recyclerview.widget.RecyclerView"]')) > 0
 
-            is_search_page = has_filter and has_sort and has_recyclerview
+            # 综合判断（优先级：顶部标题 > 筛选/排序）
+            # 方案1：有顶部标题 + 筛选按钮（最可靠）
+            is_search_page_v1 = has_top_title and has_filter
+            # 方案2：筛选 + 排序 + RecyclerView（兼容旧版）
+            is_search_page_v2 = has_filter and has_sort and has_recyclerview
+
+            is_search_page = is_search_page_v1 or is_search_page_v2
 
             if is_search_page:
-                print("✓ 确认在搜索结果页")
+                if has_top_title:
+                    print("✓ 确认在搜索结果页（检测到顶部标题）")
+                else:
+                    print("✓ 确认在搜索结果页（检测到筛选+排序）")
             else:
-                print(f"⚠ 不在搜索结果页 (筛选:{has_filter}, 排序:{has_sort}, RecyclerView:{has_recyclerview})")
+                print(f"⚠ 不在搜索结果页 (顶部标题:{has_top_title}, 筛选:{has_filter}, 排序:{has_sort}, RecyclerView:{has_recyclerview})")
 
             return is_search_page
 
