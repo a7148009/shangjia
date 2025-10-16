@@ -161,6 +161,9 @@ class DataViewerWindow(QMainWindow):
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
 
+        # 隐藏默认的行号列（垂直表头）
+        self.table.verticalHeader().setVisible(False)
+
         # 启用右键菜单
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.show_context_menu)
