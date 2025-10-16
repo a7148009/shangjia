@@ -1028,6 +1028,79 @@ class MerchantCollector:
             traceback.print_exc()
             return None
 
+    def _is_ad_service_node(self, node) -> bool:
+        """
+        检测节点是否属于广告服务卡片（2025-01-16新增）
+
+        广告服务卡片特征：
+        - 节点本身或父级节点包含广告服务关键词
+        - 例如："鲜花上门配送"、"配送服务"、"服务推荐"等
+        - 这些卡片中的"电话预定"按钮不是我们需要的商家电话
+
+        Args:
+            node: XML节点
+
+        Returns:
+            是否属于广告服务卡片
+        """
+        try:
+            # 广告服务关键词
+            ad_service_keywords = [
+                '鲜花上门配送', '上门配送', '配送服务', '鲜花配送',
+                '送货上门', '配送推荐', '服务推荐', '推荐服务',
+                '场地布置', '气球派对', '开业花篮',
+                '买花榜', '服务', '推荐'
+            ]
+
+            # 1. 检查当前节点的文本
+            text = node.get('text', '').strip()
+            content_desc = node.get('content-desc', '').strip()
+
+            for keyword in ad_service_keywords:
+                if keyword in text or keyword in content_desc:
+                    return True
+
+            # 2. 检查父级节点（向上查找2层）
+            parent = node.getparent()
+            if parent is not None:
+                parent_text = parent.get('text', '').strip()
+                parent_desc = parent.get('content-desc', '').strip()
+
+                for keyword in ad_service_keywords:
+                    if keyword in parent_text or keyword in parent_desc:
+                        return True
+
+                # 再向上查找一层
+                grandparent = parent.getparent()
+                if grandparent is not None:
+                    gp_text = grandparent.get('text', '').strip()
+                    gp_desc = grandparent.get('content-desc', '').strip()
+
+                    for keyword in ad_service_keywords:
+                        if keyword in gp_text or keyword in gp_desc:
+                            return True
+
+            # 3. 检查同级兄弟节点（可能包含服务卡片标题）
+            parent = node.getparent()
+            if parent is not None:
+                siblings = parent.xpath('.//node[@text or @content-desc]')
+                for sibling in siblings:
+                    if sibling == node:
+                        continue
+
+                    sib_text = sibling.get('text', '').strip()
+                    sib_desc = sibling.get('content-desc', '').strip()
+
+                    for keyword in ad_service_keywords:
+                        if keyword in sib_text or keyword in sib_desc:
+                            return True
+
+            return False
+
+        except Exception as e:
+            # 如果检测失败，保守起见返回False（不排除）
+            return False
+
     def _extract_by_resource_id(self, root) -> Dict:
         """
         方案A：使用resource-id精确定位（最可靠的方法）
@@ -1068,6 +1141,13 @@ class MerchantCollector:
 
                 # 清理HTML标签
                 clean_text = re.sub(r'<[^>]+>', '', text).strip()
+
+                # 🆕 关键过滤2：排除广告服务卡片中的元素
+                # 检查父级节点是否包含广告服务关键词
+                if self._is_ad_service_node(node):
+                    if self.debug_mode:
+                        print(f"     ⚠ 跳过广告服务卡片节点: '{clean_text or content_desc}'")
+                    continue
 
                 # 尝试匹配商家名相关的resource-id
                 if any(keyword in resource_id.lower() for keyword in ['title', 'name', 'merchant', 'shop']):
@@ -1129,6 +1209,12 @@ class MerchantCollector:
                     if is_excluded:
                         if self.debug_mode:
                             print(f"     ⚠ 跳过非拨号按钮: '{text or content_desc}'")
+                        continue
+
+                    # 🆕 排除广告服务卡片中的电话按钮
+                    if self._is_ad_service_node(phone_node):
+                        if self.debug_mode:
+                            print(f"     ⚠ 跳过广告服务卡片中的电话按钮: '{text or content_desc}'")
                         continue
 
                     # 🆕 验证Y轴位置（必须在合理范围：200-1500）
