@@ -1302,13 +1302,31 @@ class MerchantCollector:
             for node in text_nodes:
                 text = node.get('text', '')
 
-                # 查找HTML font标签
-                font_matches = re.findall(r'<font[^>]*>(\d+)</font>', text)
-                for phone in font_matches:
-                    # 验证是否为有效电话号码
-                    if self._is_valid_phone(phone) and phone not in phones:
-                        phones.append(phone)
-                        print(f"从HTML标签提取到电话: {phone}")
+                # 🆕 关键修复：只提取包含完整电话号码的font标签
+                # 使用更精确的正则：提取整个文本，然后从中提取电话号码
+                # 而不是直接从font标签中提取所有数字
+
+                # 先移除HTML标签，获取纯文本
+                clean_text = re.sub(r'<[^>]+>', '', text).strip()
+
+                # 在纯文本中查找电话号码
+                if clean_text:
+                    # 匹配11位手机号
+                    phone_pattern = r'1[3-9]\d{9}'
+                    matches = re.findall(phone_pattern, clean_text)
+                    for phone in matches:
+                        if phone not in phones:
+                            phones.append(phone)
+                            print(f"从HTML标签提取到电话: {phone}")
+
+                    # 匹配固定电话（区号-号码格式）
+                    landline_pattern = r'0\d{2,3}-?\d{7,8}'
+                    matches = re.findall(landline_pattern, clean_text)
+                    for phone in matches:
+                        clean_phone = phone.replace('-', '')
+                        if clean_phone not in phones and self._is_valid_phone(clean_phone):
+                            phones.append(clean_phone)
+                            print(f"从HTML标签提取到电话: {clean_phone}")
 
             # 策略2：正则匹配标准格式电话号码
             if not phones:
