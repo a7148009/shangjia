@@ -790,6 +790,41 @@ class MerchantCollector:
             print(f"拨号页面检测失败: {e}")
             return False
 
+    def _is_supplement_phone_dialog(self) -> bool:
+        """
+        检测是否是"补充电话"弹窗（2025-01-16新增：处理商家未留电话的特殊情况）
+
+        补充电话弹窗特征：
+        - 包含"补充电话"文本
+        - 表示商家未提供电话号码
+        - 无法提取电话信息
+
+        Returns:
+            是否是补充电话弹窗
+        """
+        try:
+            xml_content = self.adb_manager.get_ui_hierarchy()
+            if not xml_content:
+                return False
+
+            root = etree.fromstring(xml_content.encode('utf-8'))
+
+            # 检测"补充电话"相关文本
+            supplement_keywords = ['补充电话', '暂无电话', '未提供电话', '添加电话']
+            has_supplement_text = False
+
+            for keyword in supplement_keywords:
+                if len(root.xpath(f'//node[contains(@text, "{keyword}") or contains(@content-desc, "{keyword}")]')) > 0:
+                    has_supplement_text = True
+                    print(f"✓ 检测到补充电话弹窗 (关键词:{keyword})")
+                    break
+
+            return has_supplement_text
+
+        except Exception as e:
+            print(f"补充电话弹窗检测失败: {e}")
+            return False
+
     def collect_merchant_detail(self, merchant_name: str = None) -> Optional[Dict]:
         """
         采集当前商家详情页的核心信息（2025-01-16重构：使用结构化定位器）
@@ -1016,7 +1051,7 @@ class MerchantCollector:
             phone_button_pos: 电话按钮位置 {'x': int, 'y': int}
 
         Returns:
-            电话号码列表，如果跳转到拨号页面则返回None（特殊标记）
+            电话号码列表，如果跳转到拨号页面或无电话则返回None（特殊标记）
         """
         try:
             # 点击电话按钮
@@ -1024,9 +1059,18 @@ class MerchantCollector:
             print(f"✓ 点击电话按钮: ({phone_button_pos['x']}, {phone_button_pos['y']})")
             time.sleep(1.5)
 
-            # 🆕 关键检查：是否跳转到拨号页面（特殊情况：电话按钮带"咨询"）
+            # 🆕 关键检查1：是否跳转到拨号页面（特殊情况：电话按钮带"咨询"）
             if self._is_on_dialer_page():
                 print(f"  ⚠ 检测到拨号页面（电话按钮带'咨询'），无法提取号码")
+                print(f"  → 返回商家列表，跳过此商家")
+                # 返回None作为特殊标记，表示需要跳过此商家
+                self.adb_manager.press_back()
+                time.sleep(0.5)
+                return None
+
+            # 🆕 关键检查2：是否是"补充电话"弹窗（特殊情况：商家未留电话）
+            if self._is_supplement_phone_dialog():
+                print(f"  ⚠ 检测到'补充电话'弹窗（商家未留电话）")
                 print(f"  → 返回商家列表，跳过此商家")
                 # 返回None作为特殊标记，表示需要跳过此商家
                 self.adb_manager.press_back()
@@ -1073,9 +1117,18 @@ class MerchantCollector:
             print(f"✓ 点击电话按钮（备用方法）: ({phone_click_x}, {phone_click_y})")
             time.sleep(1.5)
 
-            # 🆕 关键检查：是否跳转到拨号页面（特殊情况：电话按钮带"咨询"）
+            # 🆕 关键检查1：是否跳转到拨号页面（特殊情况：电话按钮带"咨询"）
             if self._is_on_dialer_page():
                 print(f"  ⚠ 检测到拨号页面（电话按钮带'咨询'），无法提取号码")
+                print(f"  → 返回商家列表，跳过此商家")
+                # 返回None作为特殊标记，表示需要跳过此商家
+                self.adb_manager.press_back()
+                time.sleep(0.5)
+                return None
+
+            # 🆕 关键检查2：是否是"补充电话"弹窗（特殊情况：商家未留电话）
+            if self._is_supplement_phone_dialog():
+                print(f"  ⚠ 检测到'补充电话'弹窗（商家未留电话）")
                 print(f"  → 返回商家列表，跳过此商家")
                 # 返回None作为特殊标记，表示需要跳过此商家
                 self.adb_manager.press_back()
