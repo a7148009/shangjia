@@ -4,6 +4,8 @@
 """
 import sys
 import os
+import hashlib
+import yaml
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QComboBox, QTableWidget, QTableWidgetItem,
@@ -15,6 +17,80 @@ from PyQt6.QtGui import QFont, QPixmap, QAction
 
 from database import DatabaseManager
 from category_manager import CategoryManager
+
+
+# ==================== UI调试工具函数 ====================
+
+def load_ui_debug_config():
+    """加载UI调试配置"""
+    try:
+        with open('config.yaml', 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f)
+            return config.get('debug_mode', {}).get('ui_debug_enabled', False)
+    except:
+        return False
+
+
+def generate_window_hash(window_name: str) -> str:
+    """
+    生成窗口6位哈希值
+
+    Args:
+        window_name: 窗口名称
+
+    Returns:
+        6位哈希值字符串
+    """
+    # 使用MD5生成哈希，取前6位
+    hash_obj = hashlib.md5(window_name.encode('utf-8'))
+    return hash_obj.hexdigest()[:6].upper()
+
+
+def add_debug_hash(title: str, window_type: str = "window") -> str:
+    """
+    为窗口标题添加调试哈希值
+
+    Args:
+        title: 原始标题
+        window_type: 窗口类型（window/dialog/message）
+
+    Returns:
+        带哈希值的标题（如果启用调试模式）
+    """
+    if not load_ui_debug_config():
+        return title
+
+    # 生成唯一标识：窗口类型_标题
+    unique_id = f"{window_type}_{title}"
+    hash_value = generate_window_hash(unique_id)
+
+    return f"{title} [#{hash_value}]"
+
+
+# ==================== QMessageBox包装函数 ====================
+
+class DebugMessageBox:
+    """带调试哈希的消息框包装类"""
+
+    @staticmethod
+    def information(parent, title: str, text: str):
+        """信息提示框"""
+        return QMessageBox.information(parent, add_debug_hash(title, "dialog_info"), text)
+
+    @staticmethod
+    def warning(parent, title: str, text: str):
+        """警告提示框"""
+        return QMessageBox.warning(parent, add_debug_hash(title, "dialog_warn"), text)
+
+    @staticmethod
+    def critical(parent, title: str, text: str):
+        """错误提示框"""
+        return QMessageBox.critical(parent, add_debug_hash(title, "dialog_error"), text)
+
+    @staticmethod
+    def question(parent, title: str, text: str, buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No):
+        """询问对话框"""
+        return QMessageBox.question(parent, add_debug_hash(title, "dialog_question"), text, buttons)
 
 
 class DataViewerWindow(QMainWindow):
@@ -34,7 +110,7 @@ class DataViewerWindow(QMainWindow):
 
     def init_ui(self):
         """初始化UI"""
-        self.setWindowTitle("商家数据查看器")
+        self.setWindowTitle(add_debug_hash("商家数据查看器", "main_window"))
         self.setGeometry(100, 100, 1400, 800)
 
         # 应用现代化样式
@@ -222,7 +298,7 @@ class DataViewerWindow(QMainWindow):
             self.statusBar().showMessage(f"已加载分类树")
         else:
             self.statusBar().showMessage("暂无数据")
-            QMessageBox.information(self, "提示", "暂无采集数据，请先创建分类并采集商家信息")
+            DebugMessageBox.information(self, "提示", "暂无采集数据，请先创建分类并采集商家信息")
 
     def _build_tree_items(self, nodes, parent):
         """递归构建树形项"""
@@ -298,7 +374,7 @@ class DataViewerWindow(QMainWindow):
     def export_to_csv(self):
         """导出为CSV"""
         if not self.current_merchants:
-            QMessageBox.warning(self, "警告", "没有数据可导出")
+            DebugMessageBox.warning(self, "警告", "没有数据可导出")
             return
 
         # 使用路径的最后一部分作为文件名
@@ -331,22 +407,22 @@ class DataViewerWindow(QMainWindow):
                             merchant['collect_time']
                         ])
 
-                QMessageBox.information(self, "成功", f"数据已导出到:\n{filename}")
+                DebugMessageBox.information(self, "成功", f"数据已导出到:\n{filename}")
                 self.statusBar().showMessage("导出成功", 3000)
 
             except Exception as e:
-                QMessageBox.critical(self, "错误", f"导出失败:\n{str(e)}")
+                DebugMessageBox.critical(self, "错误", f"导出失败:\n{str(e)}")
 
     def export_to_excel(self):
         """导出为Excel"""
         if not self.current_merchants:
-            QMessageBox.warning(self, "警告", "没有数据可导出")
+            DebugMessageBox.warning(self, "警告", "没有数据可导出")
             return
 
         try:
             import openpyxl
         except ImportError:
-            QMessageBox.warning(
+            DebugMessageBox.warning(
                 self,
                 "警告",
                 "需要安装openpyxl库才能导出Excel\n\n请运行: pip install openpyxl"
@@ -398,25 +474,25 @@ class DataViewerWindow(QMainWindow):
 
                 wb.save(filename)
 
-                QMessageBox.information(self, "成功", f"数据已导出到:\n{filename}")
+                DebugMessageBox.information(self, "成功", f"数据已导出到:\n{filename}")
                 self.statusBar().showMessage("导出成功", 3000)
 
             except Exception as e:
-                QMessageBox.critical(self, "错误", f"导出失败:\n{str(e)}")
+                DebugMessageBox.critical(self, "错误", f"导出失败:\n{str(e)}")
 
     def view_merchant_images(self):
         """查看选中商家的图片"""
         selected_rows = self.table.selectedItems()
 
         if not selected_rows:
-            QMessageBox.warning(self, "警告", "请先选择一个商家")
+            DebugMessageBox.warning(self, "警告", "请先选择一个商家")
             return
 
         row = self.table.currentRow()
         merchant = self.current_merchants[row]
 
         if not merchant['images']:
-            QMessageBox.information(self, "提示", f"{merchant['name']} 没有图片")
+            DebugMessageBox.information(self, "提示", f"{merchant['name']} 没有图片")
             return
 
         # 显示图片路径
@@ -436,7 +512,7 @@ class DataViewerWindow(QMainWindow):
             image_dir = os.path.dirname(first_image_path)
 
             if os.path.exists(image_dir):
-                reply = QMessageBox.question(
+                reply = DebugMessageBox.question(
                     self,
                     "查看图片",
                     images_info + "\n\n是否打开图片文件夹？",
@@ -446,7 +522,7 @@ class DataViewerWindow(QMainWindow):
                 if reply == QMessageBox.StandardButton.Yes:
                     os.startfile(image_dir)
             else:
-                QMessageBox.information(self, "图片信息", images_info)
+                DebugMessageBox.information(self, "图片信息", images_info)
 
     def show_context_menu(self, position):
         """显示右键菜单"""
@@ -483,12 +559,12 @@ class DataViewerWindow(QMainWindow):
         selected_rows = list(set(item.row() for item in self.table.selectedItems()))
 
         if not selected_rows:
-            QMessageBox.warning(self, "警告", "请先选择要删除的商家")
+            DebugMessageBox.warning(self, "警告", "请先选择要删除的商家")
             return
 
         # 确认删除
         count = len(selected_rows)
-        reply = QMessageBox.question(
+        reply = DebugMessageBox.question(
             self,
             "确认删除",
             f"确定要删除选中的 {count} 个商家吗？\n\n"
@@ -532,10 +608,10 @@ class DataViewerWindow(QMainWindow):
             self.stats_label.setText(f"统计: 共 {len(self.current_merchants)} 条记录")
             self.statusBar().showMessage(f"成功删除 {deleted_count} 条记录", 5000)
 
-            QMessageBox.information(self, "成功", f"已删除 {deleted_count} 个商家")
+            DebugMessageBox.information(self, "成功", f"已删除 {deleted_count} 个商家")
 
         except Exception as e:
-            QMessageBox.critical(self, "错误", f"删除失败:\n{str(e)}")
+            DebugMessageBox.critical(self, "错误", f"删除失败:\n{str(e)}")
 
 
 def main():

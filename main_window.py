@@ -4,6 +4,8 @@ PyQt6实现的商家信息采集系统主界面
 """
 import sys
 import time
+import hashlib
+import yaml
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QComboBox, QLineEdit, QTextEdit, QTableWidget,
@@ -18,6 +20,61 @@ from merchant_collector import MerchantCollector
 from image_manager import ImageManager
 from database import DatabaseManager
 from category_selector import CategorySelector
+
+
+# ==================== UI调试工具函数 ====================
+
+def load_ui_debug_config():
+    """加载UI调试配置"""
+    try:
+        with open('config.yaml', 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f)
+            return config.get('debug_mode', {}).get('ui_debug_enabled', False)
+    except:
+        return False
+
+
+def generate_window_hash(window_name: str) -> str:
+    """生成窗口6位哈希值"""
+    hash_obj = hashlib.md5(window_name.encode('utf-8'))
+    return hash_obj.hexdigest()[:6].upper()
+
+
+def add_debug_hash(title: str, window_type: str = "window") -> str:
+    """为窗口标题添加调试哈希值"""
+    if not load_ui_debug_config():
+        return title
+
+    unique_id = f"{window_type}_{title}"
+    hash_value = generate_window_hash(unique_id)
+
+    return f"{title} [#{hash_value}]"
+
+
+# ==================== QMessageBox包装函数 ====================
+
+class DebugMessageBox:
+    """带调试哈希的消息框包装类"""
+
+    @staticmethod
+    def information(parent, title: str, text: str):
+        """信息提示框"""
+        return QMessageBox.information(parent, add_debug_hash(title, "dialog_info"), text)
+
+    @staticmethod
+    def warning(parent, title: str, text: str):
+        """警告提示框"""
+        return QMessageBox.warning(parent, add_debug_hash(title, "dialog_warn"), text)
+
+    @staticmethod
+    def critical(parent, title: str, text: str):
+        """错误提示框"""
+        return QMessageBox.critical(parent, add_debug_hash(title, "dialog_error"), text)
+
+    @staticmethod
+    def question(parent, title: str, text: str, buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No):
+        """询问对话框"""
+        return QMessageBox.question(parent, add_debug_hash(title, "dialog_question"), text, buttons)
 
 
 class CollectorThread(QThread):
@@ -184,7 +241,7 @@ class MainWindow(QMainWindow):
 
     def init_ui(self):
         """初始化UI"""
-        self.setWindowTitle("高德地图商家信息采集系统")
+        self.setWindowTitle(add_debug_hash("高德地图商家信息采集系统", "main_window"))
         self.setGeometry(100, 100, 1200, 800)
 
         # 设置全局样式表
@@ -533,7 +590,7 @@ class MainWindow(QMainWindow):
     def connect_device(self):
         """连接设备"""
         if self.device_combo.count() == 0:
-            QMessageBox.warning(self, "警告", "请先刷新设备列表")
+            DebugMessageBox.warning(self, "警告", "请先刷新设备列表")
             return
 
         serial = self.device_combo.currentData()
@@ -543,10 +600,10 @@ class MainWindow(QMainWindow):
             self.log("✓ 设备连接成功")
             self.collector = MerchantCollector(self.adb_manager)
             self.start_btn.setEnabled(True)
-            QMessageBox.information(self, "成功", "设备连接成功！")
+            DebugMessageBox.information(self, "成功", "设备连接成功！")
         else:
             self.log("✗ 设备连接失败")
-            QMessageBox.critical(self, "错误", "设备连接失败，请检查设备状态")
+            DebugMessageBox.critical(self, "错误", "设备连接失败，请检查设备状态")
 
     def on_category_changed(self, category_id, category_name, category_path):
         """分类选择改变"""
@@ -571,15 +628,15 @@ class MainWindow(QMainWindow):
     def start_collection(self):
         """开始采集"""
         if not self.selected_category_path:
-            QMessageBox.warning(self, "警告", "请先选择分类")
+            DebugMessageBox.warning(self, "警告", "请先选择分类")
             return
 
         if not self.adb_manager.u2_device:
-            QMessageBox.warning(self, "警告", "请先连接设备")
+            DebugMessageBox.warning(self, "警告", "请先连接设备")
             return
 
         # 确认对话框
-        reply = QMessageBox.question(
+        reply = DebugMessageBox.question(
             self,
             "确认",
             f"即将开始采集分类\"{self.selected_category_path}\"的商家信息\n\n"
@@ -635,7 +692,7 @@ class MainWindow(QMainWindow):
     def collection_error(self, error_msg):
         """采集错误"""
         self.log(f"✗ 错误: {error_msg}")
-        QMessageBox.critical(self, "错误", error_msg)
+        DebugMessageBox.critical(self, "错误", error_msg)
         self.collection_finished()
 
     def update_progress(self, current, total):
@@ -663,9 +720,9 @@ class MainWindow(QMainWindow):
             try:
                 with open(filename, 'w', encoding='utf-8') as f:
                     f.write(self.log_text.toPlainText())
-                QMessageBox.information(self, "成功", f"日志已导出到: {filename}")
+                DebugMessageBox.information(self, "成功", f"日志已导出到: {filename}")
             except Exception as e:
-                QMessageBox.critical(self, "错误", f"导出失败: {str(e)}")
+                DebugMessageBox.critical(self, "错误", f"导出失败: {str(e)}")
 
     def view_data(self):
         """查看已采集的数据"""
@@ -673,16 +730,16 @@ class MainWindow(QMainWindow):
         categories = self.db_manager.get_all_categories()
 
         if not categories:
-            QMessageBox.information(self, "提示", "暂无数据")
+            DebugMessageBox.information(self, "提示", "暂无数据")
             return
 
         msg = "已有分类:\n\n" + "\n".join(f"- {cat}" for cat in categories)
-        QMessageBox.information(self, "数据统计", msg)
+        DebugMessageBox.information(self, "数据统计", msg)
 
     def closeEvent(self, event):
         """关闭事件"""
         if self.collector_thread and self.collector_thread.isRunning():
-            reply = QMessageBox.question(
+            reply = DebugMessageBox.question(
                 self,
                 "确认",
                 "采集正在进行中，确定要退出吗？",

@@ -59,6 +59,10 @@ debug_mode:
   # 暂停等待时间（秒） (Pause duration in seconds)
   pause_duration: 2
 
+  # UI调试模式 (UI Debug Mode)
+  # 说明：在所有窗口和弹窗标题后添加6位哈希值，方便快速定位窗口
+  ui_debug_enabled: true
+
 
 # ============================================================================
 # 采集行为设置 (Collection Behavior Settings)
