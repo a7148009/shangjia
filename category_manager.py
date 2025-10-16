@@ -400,15 +400,22 @@ class CategoryManager:
 
     def get_merchant_count(self, category_id: int) -> int:
         """获取分类下的商家数量"""
-        node = self.get_category_by_id(category_id)
-        if not node:
-            return 0
-
-        table_name = node.get_table_name()
         try:
+            # 直接从数据库读取table_name字段（更可靠）
+            self.cursor.execute('''
+                SELECT table_name FROM categories_tree WHERE id = ?
+            ''', (category_id,))
+            result = self.cursor.fetchone()
+            if not result:
+                return 0
+
+            table_name = result[0]
+
+            # 查询该表的商家数量
             self.cursor.execute(f'SELECT COUNT(*) FROM {table_name}')
             return self.cursor.fetchone()[0]
-        except:
+        except Exception as e:
+            # 表可能不存在或其他错误
             return 0
 
     def close(self):
