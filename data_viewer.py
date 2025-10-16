@@ -75,9 +75,9 @@ class DataViewerWindow(QMainWindow):
 
         # 数据表格
         self.table = QTableWidget()
-        self.table.setColumnCount(5)
+        self.table.setColumnCount(4)
         self.table.setHorizontalHeaderLabels([
-            "ID", "商家名称", "地址", "电话", "采集时间"
+            "商家名称", "地址", "电话", "采集时间"
         ])
 
         # 设置表格属性
@@ -189,21 +189,18 @@ class DataViewerWindow(QMainWindow):
             row = self.table.rowCount()
             self.table.insertRow(row)
 
-            # ID
-            self.table.setItem(row, 0, QTableWidgetItem(str(merchant['id'])))
-
             # 商家名称
-            self.table.setItem(row, 1, QTableWidgetItem(merchant['name']))
+            self.table.setItem(row, 0, QTableWidgetItem(merchant['name']))
 
             # 地址
-            self.table.setItem(row, 2, QTableWidgetItem(merchant['address']))
+            self.table.setItem(row, 1, QTableWidgetItem(merchant['address']))
 
             # 电话（多个电话用逗号分隔）
             phones = ', '.join(merchant['phones'])
-            self.table.setItem(row, 3, QTableWidgetItem(phones))
+            self.table.setItem(row, 2, QTableWidgetItem(phones))
 
             # 采集时间
-            self.table.setItem(row, 4, QTableWidgetItem(merchant['collect_time']))
+            self.table.setItem(row, 3, QTableWidgetItem(merchant['collect_time']))
 
         # 更新统计信息
         self.stats_label.setText(f"统计: 共 {len(self.current_merchants)} 条记录")
@@ -235,18 +232,16 @@ class DataViewerWindow(QMainWindow):
                 with open(filename, 'w', newline='', encoding='utf-8-sig') as f:
                     writer = csv.writer(f)
 
-                    # 写入表头
-                    writer.writerow(['ID', '商家名称', '地址', '电话', '采集时间', '图片数量'])
+                    # 写入表头（不再包含ID）
+                    writer.writerow(['商家名称', '地址', '电话', '采集时间'])
 
                     # 写入数据
                     for merchant in self.current_merchants:
                         writer.writerow([
-                            merchant['id'],
                             merchant['name'],
                             merchant['address'],
                             ', '.join(merchant['phones']),
-                            merchant['collect_time'],
-                            len(merchant['images'])
+                            merchant['collect_time']
                         ])
 
                 QMessageBox.information(self, "成功", f"数据已导出到:\n{filename}")
@@ -287,19 +282,17 @@ class DataViewerWindow(QMainWindow):
                 ws = wb.active
                 ws.title = category_name[:31]  # Excel表名限制31字符
 
-                # 写入表头
-                headers = ['ID', '商家名称', '地址', '电话', '采集时间', '图片数量']
+                # 写入表头（不再包含ID）
+                headers = ['商家名称', '地址', '电话', '采集时间']
                 ws.append(headers)
 
                 # 写入数据
                 for merchant in self.current_merchants:
                     ws.append([
-                        merchant['id'],
                         merchant['name'],
                         merchant['address'],
                         ', '.join(merchant['phones']),
-                        merchant['collect_time'],
-                        len(merchant['images'])
+                        merchant['collect_time']
                     ])
 
                 # 调整列宽

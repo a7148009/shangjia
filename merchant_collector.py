@@ -826,22 +826,21 @@ class MerchantCollector:
             root = etree.fromstring(xml_content.encode('utf-8'))
             screen_width, screen_height = self.adb_manager.get_screen_size()
 
-            # ========== 🆕 方案A：使用resource-id精确定位（优先） ==========
+            # ========== 🆕 2025-01-16修复：直接使用卡片商家名，不再从详情页提取 ==========
+            # 1. 商家名称：直接使用参数传入的商家名（来自卡片列表，最准确）
+            merchant_data['name'] = merchant_name
+            print(f"✓ 使用卡片商家名: {merchant_name}")
+
+            # 2. 提取地址和电话按钮位置
             # 先尝试用resource-id定位（最可靠）
             detail_info = self._extract_by_resource_id(root)
 
-            if not detail_info['name']:
+            if not detail_info['address']:
                 # 如果resource-id失败，回退到区域定位
                 print("  ⚠ resource-id定位失败，使用区域定位")
                 detail_info = self.detail_locator.extract_merchant_info(root, debug_mode=self.debug_mode)
 
-            # 1. 提取商家名称
-            merchant_data['name'] = detail_info['name'] if detail_info['name'] else merchant_name
-
-            # 🆕 删除名称验证逻辑（你说的对，99.99%都进入了正确页面）
-            # 原来的验证导致太多误判
-
-            # 2. 提取地址
+            # 3. 提取地址
             merchant_data['address'] = detail_info['address']
 
             # 4. 点击电话按钮获取电话号码
