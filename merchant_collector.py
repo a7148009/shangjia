@@ -735,6 +735,61 @@ class MerchantCollector:
             print(f"页面检测失败: {e}")
             return False
 
+    def _is_on_dialer_page(self) -> bool:
+        """
+        检测是否在拨号页面（2025-01-16新增：处理"咨询"按钮特殊情况）
+
+        拨号页面特征：
+        - 包含拨号盘（数字按钮0-9）
+        - 包含拨号操作元素（如"通话"、"拨号"）
+        - 不是高德地图界面（没有商家信息元素）
+        - 可能是系统拨号器或第三方通讯APP
+
+        Returns:
+            是否在拨号页面
+        """
+        try:
+            xml_content = self.adb_manager.get_ui_hierarchy()
+            if not xml_content:
+                return False
+
+            root = etree.fromstring(xml_content.encode('utf-8'))
+
+            # 特征1：拨号盘数字（检测是否有数字键盘）
+            # 拨号盘通常有"1"、"2"、"3"等按钮，content-desc或text包含这些数字
+            digit_buttons = root.xpath('//node[@clickable="true" and (@text="1" or @content-desc="1" or @text="2" or @content-desc="2")]')
+            has_dialer_digits = len(digit_buttons) > 0
+
+            # 特征2：拨号相关文本
+            dialer_keywords = ['拨号', '通话', '呼叫', '联系人', '最近通话', '通讯录']
+            has_dialer_text = False
+            for keyword in dialer_keywords:
+                if len(root.xpath(f'//node[contains(@text, "{keyword}") or contains(@content-desc, "{keyword}")]')) > 0:
+                    has_dialer_text = True
+                    break
+
+            # 特征3：排除高德地图元素（如果有商家相关元素，说明不是拨号页面）
+            amap_keywords = ['商家', '导航', '路线', '地址', '详情']
+            has_amap_elements = False
+            for keyword in amap_keywords:
+                if len(root.xpath(f'//node[contains(@text, "{keyword}")]')) > 0:
+                    has_amap_elements = True
+                    break
+
+            # 判断：有拨号盘或拨号文本，且没有高德地图元素
+            is_dialer = (has_dialer_digits or has_dialer_text) and not has_amap_elements
+
+            if is_dialer:
+                print(f"✓ 检测到拨号页面 (拨号盘:{has_dialer_digits}, 拨号文本:{has_dialer_text})")
+            else:
+                print(f"  不在拨号页面 (拨号盘:{has_dialer_digits}, 拨号文本:{has_dialer_text}, 高德元素:{has_amap_elements})")
+
+            return is_dialer
+
+        except Exception as e:
+            print(f"拨号页面检测失败: {e}")
+            return False
+
     def collect_merchant_detail(self, merchant_name: str = None) -> Optional[Dict]:
         """
         采集当前商家详情页的核心信息（2025-01-16重构：使用结构化定位器）
@@ -793,10 +848,18 @@ class MerchantCollector:
             phone_button_pos = detail_info['phone_button_pos']
             if phone_button_pos:
                 phones = self._click_and_extract_phone_at_pos(phone_button_pos)
+                # 🆕 检查是否是咨询按钮（返回None表示跳转到拨号页面）
+                if phones is None:
+                    print("  ⚠ 电话按钮为咨询类型，返回None跳过此商家")
+                    return None  # 返回None表示需要跳过此商家
                 merchant_data['phones'] = phones
             else:
                 print("⚠ 未找到电话按钮，尝试使用默认位置")
                 phones = self._click_and_extract_phone(root, screen_width, screen_height)
+                # 🆕 备用方法也需要检查
+                if phones is None:
+                    print("  ⚠ 电话按钮为咨询类型，返回None跳过此商家")
+                    return None
                 merchant_data['phones'] = phones
 
             # 5. 截图保存顶部图片区域
@@ -954,13 +1017,22 @@ class MerchantCollector:
             phone_button_pos: 电话按钮位置 {'x': int, 'y': int}
 
         Returns:
-            电话号码列表
+            电话号码列表，如果跳转到拨号页面则返回None（特殊标记）
         """
         try:
             # 点击电话按钮
             self.adb_manager.click(phone_button_pos['x'], phone_button_pos['y'])
             print(f"✓ 点击电话按钮: ({phone_button_pos['x']}, {phone_button_pos['y']})")
             time.sleep(1.5)
+
+            # 🆕 关键检查：是否跳转到拨号页面（特殊情况：电话按钮带"咨询"）
+            if self._is_on_dialer_page():
+                print(f"  ⚠ 检测到拨号页面（电话按钮带'咨询'），无法提取号码")
+                print(f"  → 返回商家列表，跳过此商家")
+                # 返回None作为特殊标记，表示需要跳过此商家
+                self.adb_manager.press_back()
+                time.sleep(0.5)
+                return None
 
             # 提取电话号码
             phones = self._extract_phone_numbers()
@@ -978,6 +1050,9 @@ class MerchantCollector:
     def _click_and_extract_phone(self, root, screen_width: int, screen_height: int) -> List[str]:
         """
         点击电话图标并提取电话号码（备用方法，使用搜索）
+
+        Returns:
+            电话号码列表，如果跳转到拨号页面则返回None（特殊标记）
         """
         try:
             # 查找电话图标位置
@@ -996,7 +1071,17 @@ class MerchantCollector:
 
             # 点击电话图标
             self.adb_manager.click(phone_click_x, phone_click_y)
+            print(f"✓ 点击电话按钮（备用方法）: ({phone_click_x}, {phone_click_y})")
             time.sleep(1.5)
+
+            # 🆕 关键检查：是否跳转到拨号页面（特殊情况：电话按钮带"咨询"）
+            if self._is_on_dialer_page():
+                print(f"  ⚠ 检测到拨号页面（电话按钮带'咨询'），无法提取号码")
+                print(f"  → 返回商家列表，跳过此商家")
+                # 返回None作为特殊标记，表示需要跳过此商家
+                self.adb_manager.press_back()
+                time.sleep(0.5)
+                return None
 
             # 提取电话号码
             phones = self._extract_phone_numbers()
@@ -1329,6 +1414,13 @@ class MerchantCollector:
                         # 4. 采集商家详情（4项核心信息）
                         detail_data = self.collect_merchant_detail(merchant_name)
 
+                        # 🆕 检查特殊情况：电话按钮为咨询类型（返回None）
+                        if detail_data is None:
+                            print(f"    ⚠ 商家电话为咨询类型，跳过此商家")
+                            # 不计入采集失败，直接跳过
+                            self.go_back_to_list()
+                            continue
+
                         if detail_data:
                             # 合并基本信息和详细信息
                             merchant_full_data = {
@@ -1432,6 +1524,11 @@ class MerchantCollector:
 
             # 4. 返回列表
             self.go_back_to_list()
+
+            # 🆕 检查特殊情况：电话按钮为咨询类型（返回None）
+            if detail_data is None:
+                print(f"\n⚠ 商家电话为咨询类型，跳过此商家")
+                return None
 
             if detail_data:
                 # 返回4项核心信息
