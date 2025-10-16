@@ -37,6 +37,79 @@ class DataViewerWindow(QMainWindow):
         self.setWindowTitle("商家数据查看器")
         self.setGeometry(100, 100, 1400, 800)
 
+        # 应用现代化样式
+        self.setStyleSheet("""
+            QMainWindow {
+                background-color: #f5f5f5;
+            }
+            QLabel {
+                color: #333333;
+                padding: 5px;
+            }
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-size: 13px;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+            QPushButton:pressed {
+                background-color: #0D47A1;
+            }
+            QTreeWidget {
+                background-color: white;
+                border: 1px solid #e0e0e0;
+                border-radius: 4px;
+                padding: 5px;
+                font-size: 13px;
+            }
+            QTreeWidget::item {
+                padding: 6px;
+                border-radius: 3px;
+            }
+            QTreeWidget::item:hover {
+                background-color: #e3f2fd;
+            }
+            QTreeWidget::item:selected {
+                background-color: #2196F3;
+                color: white;
+            }
+            QTableWidget {
+                background-color: white;
+                border: 1px solid #e0e0e0;
+                border-radius: 4px;
+                gridline-color: #f0f0f0;
+                font-size: 13px;
+            }
+            QTableWidget::item {
+                padding: 8px;
+            }
+            QTableWidget::item:selected {
+                background-color: #e3f2fd;
+                color: #1976D2;
+            }
+            QHeaderView::section {
+                background-color: #fafafa;
+                color: #555555;
+                padding: 10px;
+                border: none;
+                border-bottom: 2px solid #2196F3;
+                border-right: 1px solid #e0e0e0;
+                font-weight: 600;
+                font-size: 13px;
+            }
+            QStatusBar {
+                background-color: white;
+                color: #666666;
+                border-top: 1px solid #e0e0e0;
+            }
+        """)
+
         # 创建中心部件
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -55,7 +128,7 @@ class DataViewerWindow(QMainWindow):
 
         self.category_tree = QTreeWidget()
         self.category_tree.setHeaderLabel("分类")
-        self.category_tree.setMinimumWidth(250)
+        self.category_tree.setMinimumWidth(400)
         self.category_tree.itemClicked.connect(self.on_category_selected)
         left_layout.addWidget(self.category_tree)
 
@@ -75,9 +148,9 @@ class DataViewerWindow(QMainWindow):
 
         # 数据表格
         self.table = QTableWidget()
-        self.table.setColumnCount(4)
+        self.table.setColumnCount(5)
         self.table.setHorizontalHeaderLabels([
-            "商家名称", "地址", "电话", "采集时间"
+            "序号", "商家名称", "地址", "电话", "采集时间"
         ])
 
         # 设置表格属性
@@ -152,8 +225,9 @@ class DataViewerWindow(QMainWindow):
         """递归构建树形项"""
         from category_manager import CategoryNode
         for node in nodes:
-            # 获取商家数量
-            merchant_count = self.category_manager.get_merchant_count(node.id)
+            # 获取商家数量 - 使用实际数据库查询结果的行数
+            merchants = self.db_manager.get_merchants_by_category(node.path)
+            merchant_count = len(merchants) if merchants else 0
 
             item = QTreeItem(parent)
             item.setText(0, f"{node.name} ({merchant_count})")
@@ -185,29 +259,38 @@ class DataViewerWindow(QMainWindow):
         self.table.setRowCount(0)
 
         # 填充数据
-        for merchant in self.current_merchants:
+        for idx, merchant in enumerate(self.current_merchants, 1):
             row = self.table.rowCount()
             self.table.insertRow(row)
 
+            # 序号
+            seq_item = QTableWidgetItem(str(idx))
+            seq_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.table.setItem(row, 0, seq_item)
+
             # 商家名称
-            self.table.setItem(row, 0, QTableWidgetItem(merchant['name']))
+            self.table.setItem(row, 1, QTableWidgetItem(merchant['name']))
 
             # 地址
-            self.table.setItem(row, 1, QTableWidgetItem(merchant['address']))
+            self.table.setItem(row, 2, QTableWidgetItem(merchant['address']))
 
             # 电话（多个电话用逗号分隔）
             phones = ', '.join(merchant['phones'])
-            self.table.setItem(row, 2, QTableWidgetItem(phones))
+            self.table.setItem(row, 3, QTableWidgetItem(phones))
 
             # 采集时间
-            self.table.setItem(row, 3, QTableWidgetItem(merchant['collect_time']))
+            self.table.setItem(row, 4, QTableWidgetItem(merchant['collect_time']))
 
         # 更新统计信息
         self.stats_label.setText(f"统计: 共 {len(self.current_merchants)} 条记录")
         self.statusBar().showMessage(f"已加载 {len(self.current_merchants)} 条记录")
 
-        # 调整列宽
-        self.table.resizeColumnsToContents()
+        # 设置列宽
+        self.table.setColumnWidth(0, 100)   # 序号列宽度 (5倍基础宽度)
+        self.table.setColumnWidth(1, 300)   # 商家名称列宽度 (3倍当前)
+        self.table.setColumnWidth(2, 250)   # 地址列
+        self.table.setColumnWidth(3, 150)   # 电话列
+        self.table.setColumnWidth(4, 180)   # 采集时间列
 
     def export_to_csv(self):
         """导出为CSV"""
@@ -232,12 +315,13 @@ class DataViewerWindow(QMainWindow):
                 with open(filename, 'w', newline='', encoding='utf-8-sig') as f:
                     writer = csv.writer(f)
 
-                    # 写入表头（不再包含ID）
-                    writer.writerow(['商家名称', '地址', '电话', '采集时间'])
+                    # 写入表头
+                    writer.writerow(['序号', '商家名称', '地址', '电话', '采集时间'])
 
                     # 写入数据
-                    for merchant in self.current_merchants:
+                    for idx, merchant in enumerate(self.current_merchants, 1):
                         writer.writerow([
+                            idx,
                             merchant['name'],
                             merchant['address'],
                             ', '.join(merchant['phones']),
@@ -282,13 +366,14 @@ class DataViewerWindow(QMainWindow):
                 ws = wb.active
                 ws.title = category_name[:31]  # Excel表名限制31字符
 
-                # 写入表头（不再包含ID）
-                headers = ['商家名称', '地址', '电话', '采集时间']
+                # 写入表头
+                headers = ['序号', '商家名称', '地址', '电话', '采集时间']
                 ws.append(headers)
 
                 # 写入数据
-                for merchant in self.current_merchants:
+                for idx, merchant in enumerate(self.current_merchants, 1):
                     ws.append([
+                        idx,
                         merchant['name'],
                         merchant['address'],
                         ', '.join(merchant['phones']),
