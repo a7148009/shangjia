@@ -2,10 +2,41 @@
 自定义美化对话框
 提供现代化的消息框和输入框
 """
+import hashlib
+import yaml
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
                               QLabel, QLineEdit, QTextEdit, QFrame)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QIcon
+
+
+# ==================== UI调试工具函数 ====================
+
+def load_ui_debug_config():
+    """加载UI调试配置"""
+    try:
+        with open('config.yaml', 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f)
+            return config.get('debug_mode', {}).get('ui_debug_enabled', False)
+    except:
+        return False
+
+
+def generate_window_hash(window_name: str) -> str:
+    """生成窗口6位哈希值"""
+    hash_obj = hashlib.md5(window_name.encode('utf-8'))
+    return hash_obj.hexdigest()[:6].upper()
+
+
+def add_debug_hash(title: str, window_type: str = "window") -> str:
+    """为窗口标题添加调试哈希值"""
+    if not load_ui_debug_config():
+        return title
+
+    unique_id = f"{window_type}_{title}"
+    hash_value = generate_window_hash(unique_id)
+
+    return f"{title} [#{hash_value}]"
 
 
 class ModernMessageBox(QDialog):
@@ -23,7 +54,17 @@ class ModernMessageBox(QDialog):
         self.result_value = None
         self.msg_type = msg_type
 
-        self.setWindowTitle(title)
+        # 根据消息类型设置窗口类型标识
+        window_types = {
+            self.Information: "dialog_info",
+            self.Warning: "dialog_warn",
+            self.Critical: "dialog_error",
+            self.Question: "dialog_question",
+            self.Success: "dialog_success"
+        }
+        window_type = window_types.get(msg_type, "dialog")
+
+        self.setWindowTitle(add_debug_hash(title, window_type))
         self.setModal(True)
         self.setMinimumWidth(400)
 
@@ -222,7 +263,7 @@ class ModernInputDialog(QDialog):
         super().__init__(parent)
         self.input_text = default_text
 
-        self.setWindowTitle(title)
+        self.setWindowTitle(add_debug_hash(title, "dialog_input"))
         self.setModal(True)
         self.setMinimumWidth(450)
 

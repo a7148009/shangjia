@@ -2,6 +2,8 @@
 分类树形管理对话框
 支持可视化的树形分类管理
 """
+import hashlib
+import yaml
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
                               QTreeWidget, QTreeWidgetItem, QLineEdit, QLabel,
                               QMessageBox, QInputDialog, QSplitter, QGroupBox,
@@ -11,6 +13,35 @@ from PyQt6.QtGui import QIcon
 from category_manager import CategoryManager, CategoryNode
 from custom_dialogs import show_info, show_warning, show_error, show_question, show_success, get_text
 from typing import Optional, List
+
+
+# ==================== UI调试工具函数 ====================
+
+def load_ui_debug_config():
+    """加载UI调试配置"""
+    try:
+        with open('config.yaml', 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f)
+            return config.get('debug_mode', {}).get('ui_debug_enabled', False)
+    except:
+        return False
+
+
+def generate_window_hash(window_name: str) -> str:
+    """生成窗口6位哈希值"""
+    hash_obj = hashlib.md5(window_name.encode('utf-8'))
+    return hash_obj.hexdigest()[:6].upper()
+
+
+def add_debug_hash(title: str, window_type: str = "window") -> str:
+    """为窗口标题添加调试哈希值"""
+    if not load_ui_debug_config():
+        return title
+
+    unique_id = f"{window_type}_{title}"
+    hash_value = generate_window_hash(unique_id)
+
+    return f"{title} [#{hash_value}]"
 
 
 class CategoryDialog(QDialog):
@@ -32,9 +63,9 @@ class CategoryDialog(QDialog):
     def init_ui(self):
         """初始化界面"""
         if self.select_mode:
-            self.setWindowTitle("选择分类")
+            self.setWindowTitle(add_debug_hash("选择分类", "category_selector"))
         else:
-            self.setWindowTitle("📁 分类管理")
+            self.setWindowTitle(add_debug_hash("📁 分类管理", "category_manager"))
 
         self.resize(900, 650)
 
