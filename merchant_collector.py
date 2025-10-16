@@ -995,23 +995,27 @@ class MerchantCollector:
             # 3. 提取地址
             merchant_data['address'] = detail_info['address']
 
-            # 4. 点击电话按钮获取电话号码
+            # 🆕 4. 先检查电话按钮是否存在（2025-01-16优化：先判断后操作）
             phone_button_pos = detail_info['phone_button_pos']
-            if phone_button_pos:
-                phones = self._click_and_extract_phone_at_pos(phone_button_pos)
-                # 🆕 检查是否是咨询按钮（返回None表示跳转到拨号页面）
-                if phones is None:
-                    print("  ⚠ 电话按钮为咨询类型，返回None跳过此商家")
-                    return None  # 返回None表示需要跳过此商家
-                merchant_data['phones'] = phones
-            else:
-                print("⚠ 未找到电话按钮，尝试使用默认位置")
-                phones = self._click_and_extract_phone(root, screen_width, screen_height)
-                # 🆕 备用方法也需要检查
-                if phones is None:
-                    print("  ⚠ 电话按钮为咨询类型，返回None跳过此商家")
-                    return None
-                merchant_data['phones'] = phones
+
+            if not phone_button_pos:
+                # ❌ 没有找到电话按钮 → 直接返回None跳过此商家
+                print("⚠ 未找到电话按钮，跳过此商家")
+                print("  → 立即返回商家列表，不进行后续操作")
+                return None
+
+            # ✅ 找到电话按钮 → 继续点击提取电话号码
+            print(f"✓ 检测到电话按钮存在，位置: ({phone_button_pos['x']}, {phone_button_pos['y']})")
+
+            # 5. 点击电话按钮获取电话号码
+            phones = self._click_and_extract_phone_at_pos(phone_button_pos)
+
+            # 检查是否是咨询按钮（返回None表示跳转到拨号页面）
+            if phones is None:
+                print("  ⚠ 电话按钮为咨询类型，返回None跳过此商家")
+                return None  # 返回None表示需要跳过此商家
+
+            merchant_data['phones'] = phones
 
             # 5. 截图保存顶部图片区域
             merchant_data['image_urls'] = ['screenshot_0']
