@@ -619,7 +619,7 @@ class DataViewerWindow(QMainWindow):
             DebugMessageBox.critical(self, "错误", f"删除失败:\n{str(e)}")
 
     def remove_duplicate_by_phone(self):
-        """根据电话号码清除重复数据"""
+        """根据电话号码清除重复数据（包括空号码、座机号、重复号码）"""
         if not self.current_merchants:
             DebugMessageBox.warning(self, "警告", "当前分类没有数据")
             return
@@ -629,13 +629,31 @@ class DataViewerWindow(QMainWindow):
             return
 
         try:
-            # 1. 分析重复数据
+            # 1. 分析数据：空号码、座机号、重复号码
             phone_dict = {}  # {phone: [merchant_index, ...]}
+            empty_phone_indices = []  # 空号码的商家索引
+            landline_phone_indices = []  # 座机号码的商家索引
 
             for idx, merchant in enumerate(self.current_merchants):
                 phones = merchant['phones']
 
-                # 对每个商家的每个电话号码建立索引
+                # 检查是否为空号码
+                if not phones or len(phones) == 0:
+                    empty_phone_indices.append(idx)
+                    continue
+
+                # 检查是否包含座机号码（0开头）
+                has_landline = False
+                for phone in phones:
+                    if phone.startswith('0'):
+                        has_landline = True
+                        landline_phone_indices.append(idx)
+                        break
+
+                if has_landline:
+                    continue
+
+                # 对每个商家的每个电话号码建立索引（非空、非座机）
                 for phone in phones:
                     if phone not in phone_dict:
                         phone_dict[phone] = []
@@ -647,47 +665,77 @@ class DataViewerWindow(QMainWindow):
                 if len(indices) > 1:
                     duplicate_phones[phone] = indices
 
-            if not duplicate_phones:
-                DebugMessageBox.information(self, "提示", "当前分类没有重复的电话号码数据")
+            # 3. 统计信息
+            total_empty = len(empty_phone_indices)
+            total_landline = len(landline_phone_indices)
+            total_duplicates = sum(len(indices) - 1 for indices in duplicate_phones.values())
+            total_to_delete = total_empty + total_landline + total_duplicates
+
+            if total_to_delete == 0:
+                DebugMessageBox.information(self, "提示", "当前分类没有需要清除的数据\n（无空号码、座机号、重复号码）")
                 return
 
-            # 3. 统计重复信息
-            total_duplicates = sum(len(indices) - 1 for indices in duplicate_phones.values())
-            duplicate_info = f"发现 {len(duplicate_phones)} 个重复的电话号码，共涉及 {sum(len(indices) for indices in duplicate_phones.values())} 条记录\n\n"
-            duplicate_info += f"将删除 {total_duplicates} 条重复记录，每个电话号码保留1条\n\n"
-            duplicate_info += "重复电话号码列表：\n"
+            # 4. 构建统计信息
+            duplicate_info = f"数据清理统计：\n\n"
+            duplicate_info += f"📊 总计将删除 {total_to_delete} 条记录\n\n"
 
-            for phone, indices in list(duplicate_phones.items())[:10]:  # 只显示前10个
-                duplicate_info += f"  • {phone} ({len(indices)}条)\n"
+            if total_empty > 0:
+                duplicate_info += f"• 空号码数据：{total_empty} 条\n"
 
-            if len(duplicate_phones) > 10:
-                duplicate_info += f"  ... 还有 {len(duplicate_phones) - 10} 个重复电话\n"
+            if total_landline > 0:
+                duplicate_info += f"• 座机号码数据：{total_landline} 条（0开头）\n"
 
-            # 4. 确认删除
+            if total_duplicates > 0:
+                duplicate_info += f"• 重复号码数据：{total_duplicates} 条（{len(duplicate_phones)}个重复电话）\n"
+
+            if duplicate_phones:
+                duplicate_info += f"\n重复电话号码列表（前10个）：\n"
+                for phone, indices in list(duplicate_phones.items())[:10]:
+                    duplicate_info += f"  • {phone} ({len(indices)}条记录)\n"
+
+                if len(duplicate_phones) > 10:
+                    duplicate_info += f"  ... 还有 {len(duplicate_phones) - 10} 个重复电话\n"
+
+            # 5. 确认删除
             reply = DebugMessageBox.question(
                 self,
-                "确认清除重复数据",
-                duplicate_info + "\n确定要清除这些重复数据吗？\n此操作不可恢复！",
+                "确认清除数据",
+                duplicate_info + "\n确定要清除这些数据吗？\n此操作不可恢复！",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
 
             if reply == QMessageBox.StandardButton.No:
                 return
 
-            # 5. 执行删除（保留每个电话号码的第一条记录，删除后续重复的）
+            # 6. 收集所有需要删除的索引
             to_delete_indices = []
 
+            # 6.1 添加空号码索引
+            to_delete_indices.extend(empty_phone_indices)
+
+            # 6.2 添加座机号码索引
+            to_delete_indices.extend(landline_phone_indices)
+
+            # 6.3 添加重复号码索引（保留第一条，删除其他）
             for phone, indices in duplicate_phones.items():
-                # 保留第一条（indices[0]），删除其他的
                 to_delete_indices.extend(indices[1:])
 
             # 去重并排序（倒序删除避免索引变化）
             to_delete_indices = sorted(set(to_delete_indices), reverse=True)
 
-            deleted_count = 0
+            # 7. 执行删除
+            deleted_empty = 0
+            deleted_landline = 0
+            deleted_duplicate = 0
+
             for idx in to_delete_indices:
                 merchant = self.current_merchants[idx]
                 merchant_id = merchant['id']
+
+                # 判断删除类型（用于统计）
+                is_empty = idx in empty_phone_indices
+                is_landline = idx in landline_phone_indices
+                is_duplicate = not is_empty and not is_landline
 
                 # 从数据库删除
                 success = self.db_manager.delete_merchant(self.current_table_name, merchant_id)
@@ -698,22 +746,39 @@ class DataViewerWindow(QMainWindow):
                     img_manager = ImageManager()
                     img_manager.delete_merchant_images(merchant['name'], self.current_category_path)
 
-                    deleted_count += 1
+                    # 统计删除类型
+                    if is_empty:
+                        deleted_empty += 1
+                    elif is_landline:
+                        deleted_landline += 1
+                    else:
+                        deleted_duplicate += 1
 
-            # 6. 重新加载数据
+            # 8. 重新加载数据
             self.load_merchants(self.current_table_name, self.current_category_path)
 
-            # 7. 显示结果
-            result_info = f"清除重复数据完成！\n\n"
-            result_info += f"• 删除了 {deleted_count} 条重复记录\n"
-            result_info += f"• 剩余 {len(self.current_merchants)} 条记录\n"
-            result_info += f"• 涉及 {len(duplicate_phones)} 个重复电话号码"
+            # 9. 显示结果
+            result_info = f"清除数据完成！\n\n"
+            result_info += f"📊 删除统计：\n\n"
+
+            if deleted_empty > 0:
+                result_info += f"• 清除号码为空数据：{deleted_empty} 条\n"
+
+            if deleted_landline > 0:
+                result_info += f"• 清除座机号码数据：{deleted_landline} 条\n"
+
+            if deleted_duplicate > 0:
+                result_info += f"• 清除重复号码数据：{deleted_duplicate} 条\n"
+
+            total_deleted = deleted_empty + deleted_landline + deleted_duplicate
+            result_info += f"\n✅ 总计删除：{total_deleted} 条\n"
+            result_info += f"📋 剩余记录：{len(self.current_merchants)} 条"
 
             DebugMessageBox.information(self, "成功", result_info)
-            self.statusBar().showMessage(f"已清除 {deleted_count} 条重复数据", 5000)
+            self.statusBar().showMessage(f"已清除 {total_deleted} 条数据（空号码:{deleted_empty}, 座机:{deleted_landline}, 重复:{deleted_duplicate}）", 5000)
 
         except Exception as e:
-            DebugMessageBox.critical(self, "错误", f"清除重复数据失败:\n{str(e)}")
+            DebugMessageBox.critical(self, "错误", f"清除数据失败:\n{str(e)}")
             import traceback
             traceback.print_exc()
 
