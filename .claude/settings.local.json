@@ -1,12 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git commit:*)",
-      "Bash(git add:*)",
-      "Bash(git push)",
-      "Read(//d/**)",
-      "Bash(cd /d D:info)",
-      "Bash(git -C \"D:\\info\" add .)"
+      "Bash(git -C \"D:\\info\" push)"
     ],
     "deny": [],
     "ask": []

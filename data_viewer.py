@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
     QTreeWidgetItem as QTreeItem, QSplitter
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont, QPixmap, QAction
+from PyQt6.QtGui import QFont, QPixmap, QAction, QClipboard
 
 from database import DatabaseManager
 from category_manager import CategoryManager
@@ -243,6 +243,9 @@ class DataViewerWindow(QMainWindow):
         # 启用右键菜单
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.show_context_menu)
+
+        # 启用双击事件（用于复制电话号码）
+        self.table.itemDoubleClicked.connect(self.on_item_double_clicked)
 
         right_layout.addWidget(self.table)
 
@@ -528,6 +531,41 @@ class DataViewerWindow(QMainWindow):
                     os.startfile(image_dir)
             else:
                 DebugMessageBox.information(self, "图片信息", images_info)
+
+    def on_item_double_clicked(self, item):
+        """
+        双击单元格事件处理（复制电话号码）
+
+        Args:
+            item: 被双击的表格项
+        """
+        # 获取被双击的列索引
+        column = item.column()
+
+        # 只在电话列（索引3）响应双击事件
+        if column == 3:  # 电话列
+            phone_text = item.text()
+
+            if not phone_text:
+                DebugMessageBox.information(self, "提示", "该商家没有电话号码")
+                return
+
+            # 如果有多个电话号码（逗号分隔），复制第一个
+            phones = [p.strip() for p in phone_text.split(',') if p.strip()]
+
+            if phones:
+                # 只复制第一个电话号码
+                phone_to_copy = phones[0]
+
+                # 复制到剪贴板
+                clipboard = QApplication.clipboard()
+                clipboard.setText(phone_to_copy)
+
+                # 显示提示信息
+                if len(phones) > 1:
+                    self.statusBar().showMessage(f"✓ 已复制电话号码: {phone_to_copy} （共{len(phones)}个号码，已复制第1个）", 3000)
+                else:
+                    self.statusBar().showMessage(f"✓ 已复制电话号码: {phone_to_copy}", 3000)
 
     def show_context_menu(self, position):
         """显示右键菜单"""
