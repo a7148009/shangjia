@@ -978,6 +978,15 @@ class MerchantCollector:
             root = etree.fromstring(xml_content.encode('utf-8'))
             screen_width, screen_height = self.adb_manager.get_screen_size()
 
+            # 🆕 2025-01-17 早期检测"补充电话"（避免浪费时间点击）
+            # 在商家详情页的XML中直接检测"补充电话"关键词，如果存在则立即跳过
+            supplement_keywords = ['补充电话', '暂无电话', '未提供电话', '添加电话']
+            for keyword in supplement_keywords:
+                if len(root.xpath(f'//node[contains(@text, "{keyword}") or contains(@content-desc, "{keyword}")]')) > 0:
+                    print(f"⚠ 在详情页检测到'{keyword}'，商家未提供电话号码")
+                    print("  → 直接返回商家列表，无需点击电话按钮（节省时间）")
+                    return None
+
             # ========== 🆕 2025-01-16修复：直接使用卡片商家名，不再从详情页提取 ==========
             # 1. 商家名称：直接使用参数传入的商家名（来自卡片列表，最准确）
             merchant_data['name'] = merchant_name

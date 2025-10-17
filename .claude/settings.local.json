@@ -4,7 +4,9 @@
       "Bash(git commit:*)",
       "Bash(git add:*)",
       "Bash(git push)",
-      "Read(//d/**)"
+      "Read(//d/**)",
+      "Bash(cd /d D:info)",
+      "Bash(git -C \"D:\\info\" add .)"
     ],
     "deny": [],
     "ask": []
