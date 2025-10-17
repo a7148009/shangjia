@@ -561,11 +561,16 @@ class DataViewerWindow(QMainWindow):
                 clipboard = QApplication.clipboard()
                 clipboard.setText(phone_to_copy)
 
-                # 显示提示信息
+                # 显示提示信息（状态栏 + 弹窗）
                 if len(phones) > 1:
-                    self.statusBar().showMessage(f"✓ 已复制电话号码: {phone_to_copy} （共{len(phones)}个号码，已复制第1个）", 3000)
+                    message = f"已复制电话号码：{phone_to_copy}\n\n（该商家共有 {len(phones)} 个号码，已复制第1个）"
+                    self.statusBar().showMessage(f"✓ 已复制电话号码: {phone_to_copy} （共{len(phones)}个号码）", 3000)
                 else:
+                    message = f"已复制电话号码：{phone_to_copy}"
                     self.statusBar().showMessage(f"✓ 已复制电话号码: {phone_to_copy}", 3000)
+
+                # 弹窗提示
+                DebugMessageBox.information(self, "复制成功", message)
 
     def show_context_menu(self, position):
         """显示右键菜单"""
