@@ -10,9 +10,9 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QComboBox, QTableWidget, QTableWidgetItem,
     QGroupBox, QMessageBox, QFileDialog, QHeaderView, QMenu, QTreeWidget,
-    QTreeWidgetItem as QTreeItem, QSplitter
+    QTreeWidgetItem as QTreeItem, QSplitter, QDialog
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont, QPixmap, QAction, QClipboard
 
 from database import DatabaseManager
@@ -65,6 +65,67 @@ def add_debug_hash(title: str, window_type: str = "window") -> str:
     hash_value = generate_window_hash(unique_id)
 
     return f"{title} [#{hash_value}]"
+
+
+# ==================== 自动消失的提示对话框 ====================
+
+class AutoCloseDialog(QDialog):
+    """自动关闭的提示对话框"""
+
+    def __init__(self, parent, title: str, message: str, duration_ms: int = 1500):
+        """
+        初始化自动关闭对话框
+
+        Args:
+            parent: 父窗口
+            title: 对话框标题
+            message: 提示消息
+            duration_ms: 自动关闭时间（毫秒），默认1500ms（1.5秒）
+        """
+        super().__init__(parent)
+        self.setWindowTitle(add_debug_hash(title, "dialog_auto_close"))
+        self.setModal(False)  # 非模态对话框，不阻塞主窗口
+
+        # 设置样式
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #4CAF50;
+                border-radius: 8px;
+            }
+            QLabel {
+                color: white;
+                font-size: 14px;
+                font-weight: 500;
+                padding: 20px 30px;
+            }
+        """)
+
+        # 布局
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # 消息标签
+        label = QLabel(message)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(label)
+
+        # 调整大小
+        self.adjustSize()
+        self.setFixedSize(self.size())
+
+        # 移除标题栏（更简洁）
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+
+        # 设置定时器自动关闭
+        QTimer.singleShot(duration_ms, self.close)
+
+        # 居中显示
+        if parent:
+            parent_rect = parent.geometry()
+            self.move(
+                parent_rect.center().x() - self.width() // 2,
+                parent_rect.center().y() - self.height() // 2
+            )
 
 
 # ==================== QMessageBox包装函数 ====================
@@ -561,16 +622,17 @@ class DataViewerWindow(QMainWindow):
                 clipboard = QApplication.clipboard()
                 clipboard.setText(phone_to_copy)
 
-                # 显示提示信息（状态栏 + 弹窗）
+                # 显示提示信息（状态栏 + 自动消失弹窗）
                 if len(phones) > 1:
-                    message = f"已复制电话号码：{phone_to_copy}\n\n（该商家共有 {len(phones)} 个号码，已复制第1个）"
+                    message = f"✓ 已复制：{phone_to_copy}\n（共{len(phones)}个号码，已复制第1个）"
                     self.statusBar().showMessage(f"✓ 已复制电话号码: {phone_to_copy} （共{len(phones)}个号码）", 3000)
                 else:
-                    message = f"已复制电话号码：{phone_to_copy}"
+                    message = f"✓ 已复制：{phone_to_copy}"
                     self.statusBar().showMessage(f"✓ 已复制电话号码: {phone_to_copy}", 3000)
 
-                # 弹窗提示
-                DebugMessageBox.information(self, "复制成功", message)
+                # 自动消失的弹窗提示（1.5秒后自动关闭）
+                dialog = AutoCloseDialog(self, "复制成功", message, duration_ms=1500)
+                dialog.show()
 
     def show_context_menu(self, position):
         """显示右键菜单"""
